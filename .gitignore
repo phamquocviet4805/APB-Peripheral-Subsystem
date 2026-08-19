@@ -1,0 +1,16 @@
+# Build outputs
+build/
+
+# Simulation outputs
+waves/
+*.vcd
+*.fst
+*.log
+*.out
+
+# Temporary files
+*.tmp
+*.swp
+
+# Verilator generated files
+obj_dir/
