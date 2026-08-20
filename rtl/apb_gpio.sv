@@ -1,19 +1,21 @@
 module apb_gpio (
-    input  wire        PCLK,
-    input  wire        PRESETn,
-    input  wire        PSEL,
-    input  wire        PENABLE,
-    input  wire        PWRITE,
-    input  wire [31:0] PADDR,
-    input  wire [31:0] PWDATA,
-    output reg  [31:0] PRDATA,
-    output reg         PREADY,
-    output reg         PSLVERR,
+    input  logic        PCLK,
+    input  logic        PRESETn,
+
+    input  logic        PSEL,
+    input  logic        PENABLE,
+    input  logic        PWRITE,
+    input  logic [31:0] PADDR,
+    input  logic [31:0] PWDATA,
+    
+    output logic [31:0] PRDATA,
+    output logic        PREADY,
+    output logic        PSLVERR,
 
     // GPIO interface
-    input  wire [7:0] gpio_in,
-    output reg  [7:0] gpio_out,
-    output reg  [7:0] gpio_oe
+    input  logic [7:0] gpio_in,
+    output logic [7:0] gpio_out,
+    output logic [7:0] gpio_oe
 );
 
     localparam logic [7:0] GPIO_DATA    = 8'h00;
@@ -28,6 +30,7 @@ module apb_gpio (
     //Note: PSEL and PENABLE are used to determine if the APB transaction is valid
     assign PREADY  = 1'b1;
     assign PSLVERR = 1'b0;
+    assign apb_write = PSEL && PENABLE && PWRITE && PREADY;
 
     assign gpio_out = data_reg;
     assign gpio_oe  = dir_reg;
