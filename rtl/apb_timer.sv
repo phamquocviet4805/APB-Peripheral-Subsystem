@@ -18,10 +18,10 @@ module apb_timer (
 );
 
     // Register map
-    localparam logic [7:0] TIMER_CTRL   = 8'h00;
-    localparam logic [7:0] TIMER_LOAD   = 8'h04;
-    localparam logic [7:0] TIMER_VALUE  = 8'h08;
-    localparam logic [7:0] TIMER_STATUS = 8'h0C;
+    localparam [7:0] TIMER_CTRL   = 8'h00;
+    localparam [7:0] TIMER_LOAD   = 8'h04;
+    localparam [7:0] TIMER_VALUE  = 8'h08;
+    localparam [7:0] TIMER_STATUS = 8'h0C;
 
     // Internal registers
     logic        enable_reg;

@@ -20,8 +20,8 @@ module apb_subsystem (
 );
 
     // Address map
-    localparam logic [7:0] GPIO_PAGE  = 8'h00;
-    localparam logic [7:0] TIMER_PAGE = 8'h01;
+    localparam [7:0] GPIO_PAGE  = 8'h00;
+    localparam [7:0] TIMER_PAGE = 8'h01;
 
     // Slave select
     logic gpio_psel;

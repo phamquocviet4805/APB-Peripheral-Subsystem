@@ -18,9 +18,9 @@ module apb_gpio (
     output logic [7:0] gpio_oe
 );
 
-    localparam logic [7:0] GPIO_DATA    = 8'h00;
-    localparam logic [7:0] GPIO_DIR     = 8'h04;
-    localparam logic [7:0] GPIO_INPUT   = 8'h08;
+    localparam [7:0] GPIO_DATA  = 8'h00;
+    localparam [7:0] GPIO_DIR   = 8'h04;
+    localparam [7:0] GPIO_INPUT = 8'h08;
 
     logic [7:0] data_reg;
     logic [7:0] dir_reg;
