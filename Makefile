@@ -1,4 +1,4 @@
-.PHONY: compile_gpio sim_gpio compile_timer sim_timer clean
+.PHONY: compile_gpio sim_gpio compile_timer sim_timer sim_subsystem lint clean
 
 compile_gpio:
 	mkdir -p build
@@ -59,6 +59,15 @@ sim_subsystem:
 		-o build/tb_apb_subsystem \
 		-f sim/filelist_subsystem.f
 	vvp build/tb_apb_subsystem
+
+lint:
+	verilator \
+		--lint-only \
+		-Wall \
+		--top-module apb_subsystem \
+		rtl/apb_gpio.sv \
+		rtl/apb_timer.sv \
+		rtl/apb_subsystem.sv
 
 clean:
 	rm -rf build waves
