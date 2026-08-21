@@ -70,7 +70,7 @@ module apb_subsystem (
         .PSEL     (gpio_psel),
         .PENABLE  (PENABLE),
         .PWRITE   (PWRITE),
-        .PADDR    (PADDR),
+        .PADDR    (PADDR[7:0]),
         .PWDATA   (PWDATA),
 
         .PRDATA   (gpio_prdata),
@@ -91,7 +91,7 @@ module apb_subsystem (
         .PSEL     (timer_psel),
         .PENABLE  (PENABLE),
         .PWRITE   (PWRITE),
-        .PADDR    (PADDR),
+        .PADDR    (PADDR[7:0]),
         .PWDATA   (PWDATA),
 
         .PRDATA   (timer_prdata),

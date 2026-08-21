@@ -6,7 +6,7 @@ module apb_timer (
     input  logic        PSEL,
     input  logic        PENABLE,
     input  logic        PWRITE,
-    input  logic [31:0] PADDR,
+    input  logic [7:0] PADDR,
     input  logic [31:0] PWDATA,
 
     output logic [31:0] PRDATA,
@@ -53,7 +53,7 @@ module apb_timer (
         else begin
             // APB register write
             if (apb_write) begin
-                case (PADDR[7:0])
+                case (PADDR)
                     // TIMER_CTRL
                     TIMER_CTRL: begin
                         enable_reg <= PWDATA[0];
@@ -96,7 +96,7 @@ module apb_timer (
     always_comb begin
         PRDATA = 32'h0000_0000;
         if (PSEL && !PWRITE) begin
-            case (PADDR[7:0])
+            case (PADDR)
                 TIMER_CTRL: begin
                     PRDATA = {31'h0, enable_reg};
                 end

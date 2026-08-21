@@ -5,7 +5,7 @@ module apb_gpio (
     input  logic        PSEL,
     input  logic        PENABLE,
     input  logic        PWRITE,
-    input  logic [31:0] PADDR,
+    input  logic [7:0]  PADDR,
     input  logic [31:0] PWDATA,
     
     output logic [31:0] PRDATA,
@@ -41,7 +41,7 @@ module apb_gpio (
             dir_reg <= 8'h00;
         end
         else if (apb_write) begin
-            case (PADDR[7:0])
+            case (PADDR)
                 GPIO_DATA:
                     data_reg <= PWDATA[7:0];
                 GPIO_DIR:
@@ -56,7 +56,7 @@ module apb_gpio (
         PRDATA = 32'h0;
 
         if (PSEL && !PWRITE) begin
-            case (PADDR[7:0])
+            case (PADDR)
                 GPIO_DATA:
                     PRDATA = {24'h0, data_reg};
 
