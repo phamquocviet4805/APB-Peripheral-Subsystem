@@ -1,4 +1,4 @@
-.PHONY: compile_gpio sim_gpio compile_timer sim_timer sim_subsystem lint clean
+.PHONY: compile_gpio sim_gpio compile_timer sim_timer sim_subsystem lint synth schematic_timer schematic_subsystem gate_map clean
 
 compile_gpio:
 	mkdir -p build
@@ -68,6 +68,67 @@ lint:
 		rtl/apb_gpio.sv \
 		rtl/apb_timer.sv \
 		rtl/apb_subsystem.sv
+
+synth:
+	mkdir -p build
+	yosys -p " \
+		read_verilog -sv rtl/apb_gpio.sv rtl/apb_timer.sv rtl/apb_subsystem.sv; \
+		hierarchy -check -top apb_subsystem; \
+		proc; \
+		opt; \
+		check; \
+		stat; \
+		write_verilog build/apb_subsystem_netlist.v \
+	"
+
+schematic_timer:
+	mkdir -p build
+	yosys -p " \
+		read_verilog -sv rtl/apb_timer.sv; \
+		hierarchy -check -top apb_timer; \
+		proc; \
+		opt; \
+		show -format dot -prefix build/apb_timer_schematic apb_timer \
+	"
+	dot -Tpng \
+		build/apb_timer_schematic.dot \
+		-o build/apb_timer_schematic.png
+
+schematic_subsystem:
+	mkdir -p build
+	yosys -p " \
+		read_verilog -sv \
+			rtl/apb_gpio.sv \
+			rtl/apb_timer.sv \
+			rtl/apb_subsystem.sv; \
+		hierarchy -check -top apb_subsystem; \
+		proc; \
+		opt; \
+		show -format dot \
+			-prefix build/apb_subsystem_schematic \
+			apb_subsystem \
+	"
+	dot -Tpng \
+		build/apb_subsystem_schematic.dot \
+		-o build/apb_subsystem_schematic.png
+
+gate_map:
+	mkdir -p build
+	yosys -p " \
+		read_verilog -sv \
+			rtl/apb_gpio.sv \
+			rtl/apb_timer.sv \
+			rtl/apb_subsystem.sv; \
+		hierarchy -check -top apb_subsystem; \
+		proc; \
+		opt; \
+		techmap; \
+		opt; \
+		abc -g AND,OR,XOR,XNOR,MUX; \
+		clean; \
+		stat; \
+		write_verilog build/apb_subsystem_gate_netlist.v \
+	"
 
 clean:
 	rm -rf build waves
