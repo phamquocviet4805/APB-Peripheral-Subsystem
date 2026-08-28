@@ -92,6 +92,7 @@ module apb_timer (
             end
         end
     end
+
     // Read
     always_comb begin
         PRDATA = 32'h0000_0000;

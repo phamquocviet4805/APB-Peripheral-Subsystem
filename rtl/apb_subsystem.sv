@@ -119,6 +119,10 @@ module apb_subsystem (
             PREADY  = timer_pready;
             PSLVERR = timer_pslverr;
         end
+
+        else if (PSEL && PENABLE) begin
+            PSLVERR = 1'b1;
+        end
     end
 
 endmodule
