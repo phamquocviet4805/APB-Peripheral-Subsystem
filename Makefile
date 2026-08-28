@@ -1,3 +1,5 @@
+LIB = lib/NangateOpenCellLibrary_typical.lib
+
 .PHONY: compile_gpio sim_gpio compile_timer sim_timer sim_subsystem lint synth schematic_timer schematic_subsystem gate_map clean
 
 compile_gpio:
@@ -129,6 +131,31 @@ gate_map:
 		stat; \
 		write_verilog build/apb_subsystem_gate_netlist.v \
 	"
+
+stdcell_map:
+	mkdir -p build
+	yosys -p " \
+		read_verilog -sv \
+			rtl/apb_gpio.sv \
+			rtl/apb_timer.sv \
+			rtl/apb_subsystem.sv; \
+		hierarchy -check -top apb_subsystem; \
+		proc; \
+		opt; \
+		flatten; \
+		opt; \
+		techmap; \
+		opt; \
+		dfflibmap -liberty $(LIB); \
+		abc -liberty $(LIB); \
+		clean; \
+		stat -liberty $(LIB); \
+		write_verilog -noattr build/apb_subsystem_mapped.v \
+	"
+
+sta:
+	mkdir -p reports
+	sta scripts/sta.tcl | tee reports/sta.log
 
 clean:
 	rm -rf build waves
