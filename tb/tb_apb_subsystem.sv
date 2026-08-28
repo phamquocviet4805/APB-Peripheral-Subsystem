@@ -270,55 +270,55 @@ module tb_apb_subsystem;
 
         $display("[PASS] TIMER_STATUS");
 
-        // // Invalid address
-        // apb_read_error(32'h0000_0200);
+        // Invalid address
+        apb_read_error(32'h0000_0200);
 
-        // $display("[PASS] Invalid address PSLVERR");
+        $display("[PASS] Invalid address PSLVERR");
 
-        // // GPIO_INPUT is read-only
-        // apb_write(32'h0000_0008, 32'h0000_0055);
-        // apb_read(32'h0000_0008, read_data);
+        // GPIO_INPUT is read-only
+        apb_write(32'h0000_0008, 32'h0000_0055);
+        apb_read(32'h0000_0008, read_data);
 
-        // if (read_data !== 32'h0000_00A5)
-        //     $fatal(1, "GPIO_INPUT RO register was modified");
+        if (read_data !== 32'h0000_00A5)
+            $fatal(1, "GPIO_INPUT RO register was modified");
 
-        // $display("[PASS] GPIO_INPUT is read-only");
+        $display("[PASS] GPIO_INPUT is read-only");
 
-        // TIMER_VALUE is read-only
-        // apb_read(32'h0000_0108, read_data);
-        // value_before = read_data;
+        TIMER_VALUE is read-only
+        apb_read(32'h0000_0108, read_data);
+        value_before = read_data;
 
-        // apb_write(
-        //     32'h0000_0108,
-        //     32'hDEAD_BEEF
-        // );
+        apb_write(
+            32'h0000_0108,
+            32'hDEAD_BEEF
+        );
 
-        // apb_read(
-        //     32'h0000_0108,
-        //     read_data
-        // );
+        apb_read(
+            32'h0000_0108,
+            read_data
+        );
 
-        // if (read_data !== value_before)
-        //     $fatal(1, "TIMER_VALUE RO register was modified");
+        if (read_data !== value_before)
+            $fatal(1, "TIMER_VALUE RO register was modified");
 
-        // $display("[PASS] TIMER_VALUE is read-only");
+        $display("[PASS] TIMER_VALUE is read-only");
 
-        // apb_write(32'h0000_0104, 32'd10);
+        apb_write(32'h0000_0104, 32'd10);
 
-        // apb_write(
-        //     32'h0000_0000,
-        //     32'h0000_00AA
-        // );
+        apb_write(
+            32'h0000_0000,
+            32'h0000_00AA
+        );
 
-        // apb_read(
-        //     32'h0000_0104,
-        //     read_data
-        // );
+        apb_read(
+            32'h0000_0104,
+            read_data
+        );
 
-        // if (read_data !== 32'd10)
-        //     $fatal(1, "GPIO access corrupted TIMER_LOAD");
+        if (read_data !== 32'd10)
+            $fatal(1, "GPIO access corrupted TIMER_LOAD");
 
-        // $display("[PASS] Peripheral isolation");
+        $display("[PASS] Peripheral isolation");
 
         $display("");
         $display("================================");
