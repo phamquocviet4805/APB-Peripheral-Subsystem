@@ -1,22 +1,16 @@
-# Build / synthesis outputs
+# Local build / tool flow
+Makefile
+sim/
+constraints/
+scripts/
+lib/
+
+# Generated files
 build/
-
-# Verilator generated files
 obj_dir/
-
-# Simulation waveforms
 waves/
+reports/
+
 *.vcd
 *.fst
-
-# Generated reports
-reports/
 *.log
-
-# Temporary files
-*.tmp
-*.swp
-*~
-
-# External technology libraries
-lib/*.lib
