@@ -56,9 +56,3 @@ See `docs/register_map.md`.
 - GNU Make
 - Git
 
-## Run
-
-Subsystem simulation:
-
-```bash
-make sim_subsystem
