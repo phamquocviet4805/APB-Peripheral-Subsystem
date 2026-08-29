@@ -1,16 +1,22 @@
-# Build outputs
+# Build / synthesis outputs
 build/
 
-# Simulation outputs
+# Verilator generated files
+obj_dir/
+
+# Simulation waveforms
 waves/
 *.vcd
 *.fst
+
+# Generated reports
+reports/
 *.log
-*.out
 
 # Temporary files
 *.tmp
 *.swp
+*~
 
-# Verilator generated files
-obj_dir/
+# External technology libraries
+lib/*.lib

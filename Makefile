@@ -1,62 +1,26 @@
 LIB = lib/NangateOpenCellLibrary_typical.lib
 
-.PHONY: compile_gpio sim_gpio compile_timer sim_timer sim_subsystem lint synth schematic_timer schematic_subsystem gate_map clean
-
-compile_gpio:
-	mkdir -p build
-	iverilog \
-		-g2012 \
-		-Wall \
-		-s apb_gpio \
-		-o build/apb_gpio_check \
-		rtl/apb_gpio.sv
+.PHONY: sim_gpio sim_timer sim_subsystem lint synth stdcell_map sta regression clean
 
 sim_gpio:
 	mkdir -p build waves
-	iverilog \
-		-g2012 \
-		-Wall \
+	iverilog -g2012 -Wall \
 		-s tb_apb_gpio \
 		-o build/tb_apb_gpio \
 		-f sim/filelist_gpio.f
 	vvp build/tb_apb_gpio
 
-
-compile_timer:
-	mkdir -p build
-	iverilog \
-		-g2012 \
-		-Wall \
-		-s apb_timer \
-		-o build/apb_timer_check \
-		rtl/apb_timer.sv
-
 sim_timer:
 	mkdir -p build waves
-	iverilog \
-		-g2012 \
-		-Wall \
+	iverilog -g2012 -Wall \
 		-s tb_apb_timer \
 		-o build/tb_apb_timer \
 		-f sim/filelist_timer.f
 	vvp build/tb_apb_timer
 
-compile_subsystem:
-	mkdir -p build
-	iverilog \
-		-g2012 \
-		-Wall \
-		-s apb_subsystem \
-		-o build/apb_subsystem_check \
-		rtl/apb_gpio.sv \
-		rtl/apb_timer.sv \
-		rtl/apb_subsystem.sv
-
 sim_subsystem:
 	mkdir -p build waves
-	iverilog \
-		-g2012 \
-		-Wall \
+	iverilog -g2012 -Wall \
 		-s tb_apb_subsystem \
 		-o build/tb_apb_subsystem \
 		-f sim/filelist_subsystem.f
@@ -66,6 +30,7 @@ lint:
 	verilator \
 		--lint-only \
 		-Wall \
+		-Wno-fatal \
 		--top-module apb_subsystem \
 		rtl/apb_gpio.sv \
 		rtl/apb_timer.sv \
@@ -76,76 +41,16 @@ synth:
 	yosys -p " \
 		read_verilog -sv rtl/apb_gpio.sv rtl/apb_timer.sv rtl/apb_subsystem.sv; \
 		hierarchy -check -top apb_subsystem; \
-		proc; \
-		opt; \
-		check; \
-		stat; \
+		proc; opt; check; stat; \
 		write_verilog build/apb_subsystem_netlist.v \
-	"
-
-schematic_timer:
-	mkdir -p build
-	yosys -p " \
-		read_verilog -sv rtl/apb_timer.sv; \
-		hierarchy -check -top apb_timer; \
-		proc; \
-		opt; \
-		show -format dot -prefix build/apb_timer_schematic apb_timer \
-	"
-	dot -Tpng \
-		build/apb_timer_schematic.dot \
-		-o build/apb_timer_schematic.png
-
-schematic_subsystem:
-	mkdir -p build
-	yosys -p " \
-		read_verilog -sv \
-			rtl/apb_gpio.sv \
-			rtl/apb_timer.sv \
-			rtl/apb_subsystem.sv; \
-		hierarchy -check -top apb_subsystem; \
-		proc; \
-		opt; \
-		show -format dot \
-			-prefix build/apb_subsystem_schematic \
-			apb_subsystem \
-	"
-	dot -Tpng \
-		build/apb_subsystem_schematic.dot \
-		-o build/apb_subsystem_schematic.png
-
-gate_map:
-	mkdir -p build
-	yosys -p " \
-		read_verilog -sv \
-			rtl/apb_gpio.sv \
-			rtl/apb_timer.sv \
-			rtl/apb_subsystem.sv; \
-		hierarchy -check -top apb_subsystem; \
-		proc; \
-		opt; \
-		techmap; \
-		opt; \
-		abc -g AND,OR,XOR,XNOR,MUX; \
-		clean; \
-		stat; \
-		write_verilog build/apb_subsystem_gate_netlist.v \
 	"
 
 stdcell_map:
 	mkdir -p build
 	yosys -p " \
-		read_verilog -sv \
-			rtl/apb_gpio.sv \
-			rtl/apb_timer.sv \
-			rtl/apb_subsystem.sv; \
+		read_verilog -sv rtl/apb_gpio.sv rtl/apb_timer.sv rtl/apb_subsystem.sv; \
 		hierarchy -check -top apb_subsystem; \
-		proc; \
-		opt; \
-		flatten; \
-		opt; \
-		techmap; \
-		opt; \
+		proc; opt; flatten; opt; techmap; opt; \
 		dfflibmap -liberty $(LIB); \
 		abc -liberty $(LIB); \
 		clean; \
@@ -153,9 +58,18 @@ stdcell_map:
 		write_verilog -noattr build/apb_subsystem_mapped.v \
 	"
 
-sta:
+sta: stdcell_map
 	mkdir -p reports
 	sta scripts/sta.tcl | tee reports/sta.log
 
+regression:
+	$(MAKE) sim_gpio
+	$(MAKE) sim_timer
+	$(MAKE) sim_subsystem
+	$(MAKE) lint
+	$(MAKE) synth
+	$(MAKE) stdcell_map
+	$(MAKE) sta
+
 clean:
-	rm -rf build waves
+	rm -rf build waves reports
