@@ -6,7 +6,7 @@ module tb_apb_timer;
     logic        PSEL;
     logic        PENABLE;
     logic        PWRITE;
-    logic [31:0] PADDR;
+    logic [7:0]  PADDR;
     logic [31:0] PWDATA;
 
     logic [31:0] PRDATA;
@@ -59,11 +59,12 @@ module tb_apb_timer;
         PSEL    = 1'b0;
         PENABLE = 1'b0;
         PWRITE  = 1'b0;
-        PADDR   = 32'h0;
+        PADDR   = 8'h00;
         PWDATA  = 32'h0;
 
         repeat (2) @(posedge PCLK);
 
+        @(negedge PCLK);
         PRESETn = 1'b1;
 
         @(posedge PCLK);
@@ -73,7 +74,7 @@ module tb_apb_timer;
 
     // APB WRITE
     task apb_write(
-        input logic [31:0] addr,
+        input logic [7:0] addr,
         input logic [31:0] data
     );
     begin
@@ -99,7 +100,7 @@ module tb_apb_timer;
         PSEL    = 1'b0;
         PENABLE = 1'b0;
         PWRITE  = 1'b0;
-        PADDR   = 32'h0;
+        PADDR   = 8'h00;
         PWDATA  = 32'h0;
     end
     endtask
@@ -107,7 +108,7 @@ module tb_apb_timer;
 
     // APB READ
     task apb_read(
-        input  logic [31:0] addr,
+        input  logic [7:0] addr,
         output logic [31:0] data
     );
     begin
@@ -133,9 +134,16 @@ module tb_apb_timer;
 
         PSEL    = 1'b0;
         PENABLE = 1'b0;
-        PADDR   = 32'h0;
+        PADDR   = 8'h00;
     end
     endtask
+
+
+    // Bound the simulation if an APB transfer or IRQ wait never completes.
+    initial begin
+        repeat (1000) @(posedge PCLK);
+        $fatal(1, "TIMEOUT: timer test did not complete");
+    end
 
 
     // Test
@@ -152,12 +160,12 @@ module tb_apb_timer;
 
         // Test TIMER_LOAD
         apb_write(
-            32'h0000_0004,
+            8'h04,
             32'd5
         );
 
         apb_read(
-            32'h0000_0004,
+            8'h04,
             read_data
         );
 
@@ -173,12 +181,12 @@ module tb_apb_timer;
 
         // Test TIMER_CTRL
         apb_write(
-            32'h0000_0000,
+            8'h00,
             32'd1
         );
 
         apb_read(
-            32'h0000_0000,
+            8'h00,
             read_data
         );
 
@@ -195,7 +203,7 @@ module tb_apb_timer;
         @(posedge PCLK);
 
         apb_read(
-            32'h0000_0008,
+            8'h08,
             read_data
         );
 
@@ -221,7 +229,7 @@ module tb_apb_timer;
 
         // Check counter reached zero
         apb_read(
-            32'h0000_0008,
+            8'h08,
             read_data
         );
 
@@ -237,7 +245,7 @@ module tb_apb_timer;
 
         // Test TIMER_STATUS
         apb_read(
-            32'h0000_000C,
+            8'h0C,
             read_data
         );
 
@@ -250,17 +258,35 @@ module tb_apb_timer;
         $display("[PASS] TIMER_STATUS");
 
 
-        // Test IRQ clear
+        // One-shot expiration must disable the timer.
+        apb_read(8'h00, read_data);
+        if (read_data[0] !== 1'b0)
+            $fatal(1, "ONE-SHOT FAILED: enable bit still set");
+
+        // Disabling CTRL does not clear the sticky IRQ.
         apb_write(
-            32'h0000_0000,
+            8'h00,
             32'd0
         );
 
+        if (irq !== 1'b1)
+            $fatal(1, "CTRL FAILED: disabling timer cleared irq");
+
+        // INTCLR is write-one-to-clear; writing zero must preserve IRQ.
+        apb_write(8'h14, 32'd0);
+        if (irq !== 1'b1)
+            $fatal(1, "INTCLR FAILED: writing zero cleared irq");
+
+        apb_write(8'h14, 32'd1);
         if (irq !== 1'b0)
             $fatal(
                 1,
                 "IRQ CLEAR FAILED"
             );
+
+        apb_read(8'h0C, read_data);
+        if (read_data !== 32'd0)
+            $fatal(1, "TIMER_STATUS FAILED: status not cleared");
 
         $display("[PASS] IRQ clear");
 
