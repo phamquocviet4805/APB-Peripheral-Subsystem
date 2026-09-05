@@ -18,12 +18,11 @@ module tb_apb_subsystem;
     logic [7:0]  gpio_out;
     logic [7:0]  gpio_oe;
 
-    // Reg
+    // Interrupts
+    logic        gpio_irq;
     logic        timer_irq;
 
     logic [31:0] read_data;
-
-    logic [31:0] value_before;
 
     // Scoreboard && randomization
     logic [7:0]  model_gpio_data;
@@ -76,6 +75,7 @@ module tb_apb_subsystem;
         .gpio_out  (gpio_out),
         .gpio_oe   (gpio_oe),
 
+        .gpio_irq  (gpio_irq),
         .timer_irq (timer_irq)
     );
 
@@ -120,6 +120,7 @@ module tb_apb_subsystem;
 
         repeat (2) @(posedge PCLK);
 
+        @(negedge PCLK);
         PRESETn = 1'b1;
 
         @(posedge PCLK);
@@ -148,6 +149,9 @@ module tb_apb_subsystem;
 
         while (!PREADY)
             @(posedge PCLK);
+
+        if (PREADY !== 1'b1 || PSLVERR !== 1'b0)
+            $fatal(1, "Unexpected APB response at %h", addr);
 
         sample_coverage(addr, 1'b1);
 
@@ -185,6 +189,9 @@ module tb_apb_subsystem;
 
         data = PRDATA;
 
+        if (PREADY !== 1'b1 || PSLVERR !== 1'b0)
+            $fatal(1, "Unexpected APB response at %h", addr);
+
         sample_coverage(addr, 1'b0);
 
         @(negedge PCLK);
@@ -213,11 +220,14 @@ module tb_apb_subsystem;
 
         @(posedge PCLK);
 
-        if (!PREADY)
+        if (PREADY !== 1'b1)
             $fatal(1, "Expected PREADY for invalid address");
 
-        if (!PSLVERR)
+        if (PSLVERR !== 1'b1)
             $fatal(1, "Expected PSLVERR for invalid address");
+        if (PRDATA !== 32'd0)
+            $fatal(1, "Invalid read must return zero");
+        sample_coverage(addr, 1'b0);
 
         @(negedge PCLK);
 
@@ -250,7 +260,9 @@ module tb_apb_subsystem;
             rand_data = $urandom;
 
             // Randomize external GPIO input
+            @(negedge PCLK);
             gpio_in = $urandom;
+            repeat (3) @(negedge PCLK);
 
 
             // WRITE
@@ -516,8 +528,10 @@ module tb_apb_subsystem;
                     cov_timer_status_rd++;
             end
 
-            default:
-                cov_invalid_addr++;
+            default: begin
+                if (addr[15:8] != 8'h00 && addr[15:8] != 8'h01)
+                    cov_invalid_addr++;
+            end
 
         endcase
 
@@ -579,7 +593,7 @@ module tb_apb_subsystem;
 
 
         $display("");
-        $display("========= FUNCTIONAL COVERAGE =========");
+        $display("===== ACCESS COVERAGE (6 REGISTERS) =====");
 
         $display("GPIO_DATA   RD=%0d WR=%0d",
                 cov_gpio_data_rd,
@@ -619,6 +633,122 @@ module tb_apb_subsystem;
     end
     endtask
 
+    task check_reg(input logic [31:0] addr, input logic [31:0] expected);
+        logic [31:0] actual;
+        begin
+            apb_read(addr, actual);
+            if (actual !== expected)
+                $fatal(1, "Register %h: expected %h, got %h", addr, expected, actual);
+        end
+    endtask
+
+    task apb_write_error(input logic [31:0] addr);
+        begin
+            @(negedge PCLK);
+            PSEL = 1;
+            PENABLE = 0;
+            PWRITE = 1;
+            PADDR = addr;
+            PWDATA = 32'hFFFF_FFFF;
+            @(negedge PCLK);
+            PENABLE = 1;
+            @(posedge PCLK);
+            if (PREADY !== 1'b1 || PSLVERR !== 1'b1)
+                $fatal(1, "Expected write error at %h", addr);
+            sample_coverage(addr, 1'b1);
+            @(negedge PCLK);
+            PSEL = 0;
+            PENABLE = 0;
+            PWRITE = 0;
+            PADDR = 0;
+            PWDATA = 0;
+        end
+    endtask
+
+    task directed_test;
+        begin
+            if (gpio_out !== 8'd0 || gpio_oe !== 8'd0 ||
+                gpio_irq !== 1'b0 || timer_irq !== 1'b0)
+                $fatal(1, "Subsystem reset failed");
+            check_reg(32'h0000, 32'd0);
+            check_reg(32'h0100, 32'd0);
+
+            apb_write(32'h0000, 32'h5A);
+            apb_write(32'h0004, 32'h0F);
+            apb_write(32'h0104, 32'd8);
+            apb_write(32'h0110, 32'd3);
+            check_reg(32'h0000, 32'h5A);
+            check_reg(32'h0004, 32'h0F);
+            check_reg(32'h0104, 32'd8);
+            check_reg(32'h0108, 32'd8);
+            check_reg(32'h0110, 32'd3);
+            if (gpio_out !== 8'h5A || gpio_oe !== 8'h0F)
+                $fatal(1, "Timer writes corrupted GPIO outputs");
+            $display("[PASS] Register routing and peripheral isolation");
+
+            // GPIO event remains pending while the timer runs.
+            apb_write(32'h0010, 32'd1);
+            apb_write(32'h000C, 32'd1);
+            @(negedge PCLK);
+            gpio_in = 8'h01;
+            repeat (3) @(negedge PCLK);
+            check_reg(32'h0008, 32'd1);
+            check_reg(32'h0014, 32'd1);
+            if (gpio_irq !== 1'b1 || timer_irq !== 1'b0)
+                $fatal(1, "GPIO IRQ routing failed");
+
+            apb_write(32'h0100, 32'd1);
+            wait (timer_irq === 1'b1);
+            check_reg(32'h0108, 32'd0);
+            check_reg(32'h0100, 32'd0);
+            check_reg(32'h010C, 32'd1);
+            if (gpio_irq !== 1'b1)
+                $fatal(1, "Timer operation changed GPIO IRQ");
+
+            apb_write(32'h0114, 32'd1);
+            if (timer_irq !== 1'b0 || gpio_irq !== 1'b1)
+                $fatal(1, "Timer IRQ clear isolation failed");
+            check_reg(32'h010C, 32'd0);
+            check_reg(32'h0014, 32'd1);
+            apb_write(32'h0018, 32'd1);
+            if (gpio_irq !== 1'b0 || timer_irq !== 1'b0)
+                $fatal(1, "GPIO IRQ clear routing failed");
+            check_reg(32'h0014, 32'd0);
+            $display("[PASS] Timer expiration and independent IRQ routing/clear");
+
+            apb_read_error(32'h0200);
+            apb_write_error(32'h0204);
+            apb_read_error(32'hFFFF_FF00);
+            apb_write_error(32'hFFFF_FF00);
+            check_reg(32'h0000, 32'h5A);
+            check_reg(32'h0004, 32'h0F);
+            check_reg(32'h0104, 32'd8);
+            $display("[PASS] Invalid page read/write errors and isolation");
+
+            // Unimplemented offsets inside a valid page return zero, no error.
+            apb_write(32'h00FC, 32'hFFFF_FFFF);
+            apb_write(32'h01FC, 32'hFFFF_FFFF);
+            check_reg(32'h00FC, 32'd0);
+            check_reg(32'h01FC, 32'd0);
+            check_reg(32'h0000, 32'h5A);
+            check_reg(32'h0104, 32'd8);
+
+            // Current decoder ignores PADDR[31:16]. Document that behavior.
+            check_reg(32'hABCD_0000, 32'h5A);
+            check_reg(32'hABCD_0104, 32'd8);
+            $display("[PASS] Unimplemented offsets and upper-address aliases");
+
+            @(posedge PCLK);
+            if (PRDATA !== 32'd0 || PREADY !== 1'b1 || PSLVERR !== 1'b0)
+                $fatal(1, "Idle APB response failed");
+        end
+    endtask
+
+    initial begin
+        repeat (10000) @(posedge PCLK);
+        $fatal(1, "TIMEOUT: subsystem test did not complete");
+    end
+
     // Test
     initial begin
 
@@ -626,131 +756,7 @@ module tb_apb_subsystem;
 
         reset_coverage();
 
-        // // GPIO DATA
-        // apb_write(32'h0000_0000, 32'h0000_005A);
-
-        // if (gpio_out !== 8'h5A)
-        //     $fatal(1, "GPIO_DATA write failed");
-
-        // apb_read(32'h0000_0000, read_data);
-
-        // if (read_data !== 32'h0000_005A)
-        //     $fatal(1, "GPIO_DATA read failed");
-
-        // $display("[PASS] GPIO_DATA");
-
-
-        // // GPIO DIR
-        // apb_write(32'h0000_0004, 32'h0000_000F);
-
-        // if (gpio_oe !== 8'h0F)
-        //     $fatal(1, "GPIO_DIR write failed");
-
-        // $display("[PASS] GPIO_DIR");
-
-
-        // // GPIO INPUT
-        // gpio_in = 8'hA5;
-
-        // apb_read(32'h0000_0008, read_data);
-
-        // if (read_data !== 32'h0000_00A5)
-        //     $fatal(1, "GPIO_INPUT read failed");
-
-        // $display("[PASS] GPIO_INPUT");
-
-
-        // // TIMER LOAD
-        // apb_write(32'h0000_0104, 32'd5);
-
-        // apb_read(32'h0000_0104, read_data);
-
-        // if (read_data !== 32'd5)
-        //     $fatal(1, "TIMER_LOAD failed");
-
-        // $display("[PASS] TIMER_LOAD");
-
-
-        // // Check GPIO not affected by Timer access
-        // if (gpio_out !== 8'h5A)
-        //     $fatal(1, "Timer access corrupted GPIO");
-
-        // if (gpio_oe !== 8'h0F)
-        //     $fatal(1, "Timer access corrupted GPIO_DIR");
-
-        // $display("[PASS] Address isolation");
-
-
-        // // Enable Timer
-        // apb_write(32'h0000_0100, 32'd1);
-
-        // wait (timer_irq == 1'b1);
-
-        // apb_read(32'h0000_0108, read_data);
-
-        // if (read_data !== 32'd0)
-        //     $fatal(1, "Timer did not reach zero");
-
-        // $display("[PASS] Timer countdown");
-
-
-        // // Timer STATUS
-        // apb_read(32'h0000_010C, read_data);
-
-        // if (read_data[0] !== 1'b1)
-        //     $fatal(1, "Timer IRQ status failed");
-
-        // $display("[PASS] TIMER_STATUS");
-
-        // // Invalid address
-        // apb_read_error(32'h0000_0200);
-
-        // $display("[PASS] Invalid address PSLVERR");
-
-        // // GPIO_INPUT is read-only
-        // apb_write(32'h0000_0008, 32'h0000_0055);
-        // apb_read(32'h0000_0008, read_data);
-
-        // if (read_data !== 32'h0000_00A5)
-        //     $fatal(1, "GPIO_INPUT RO register was modified");
-
-        // $display("[PASS] GPIO_INPUT is read-only");
-
-        // TIMER_VALUE is read-only
-        // apb_read(32'h0000_0108, read_data);
-        // value_before = read_data;
-
-        // apb_write(
-        //     32'h0000_0108,
-        //     32'hDEAD_BEEF
-        // );
-
-        // apb_read(
-        //     32'h0000_0108,
-        //     read_data
-        // );
-
-        // if (read_data !== value_before)
-        //     $fatal(1, "TIMER_VALUE RO register was modified");
-
-        // $display("[PASS] TIMER_VALUE is read-only");
-
-        // apb_write(32'h0000_0104, 32'd10);
-
-        // apb_write(
-        //     32'h0000_0000,
-        //     32'h0000_00AA
-        // );
-
-        // apb_read(
-        //     32'h0000_0104,
-        //     read_data
-        // );
-
-        // if (read_data !== 32'd10)
-        //     $fatal(1, "GPIO access corrupted TIMER_LOAD");
-
-        // $display("[PASS] Peripheral isolation");
+        directed_test();
 
         random_test();
 
