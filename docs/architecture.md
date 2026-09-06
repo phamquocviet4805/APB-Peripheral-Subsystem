@@ -6,22 +6,58 @@ an APB response multiplexer. All sequential logic uses the rising edge of
 
 ## Block diagram
 
-```text
-                         apb_subsystem
-APB master ----> address decoder (PADDR[15:8])
-                         |               |           |
-                         v               v           v
-                     apb_gpio        apb_timer    apb_uart
-                         |               |           |
-                         +-------+-------+-----------+
-                                 v
-                           response mux ----> PRDATA / PREADY / PSLVERR
+```mermaid
+---
+config:
+  flowchart:
+    curve: stepAfter
+    nodeSpacing: 35
+    rankSpacing: 45
+---
+flowchart TB
+    MASTER["CPU / APB Master"]
 
-GPIO inputs ----> synchronizer / edge detector ----> gpio_irq
-GPIO registers ----------------------------------> gpio_out / gpio_oe
-Timer counter -----------------------------------> timer_irq
-UART RX/TX engines <----> uart_rx / uart_tx --------> uart_irq
+    subgraph SYS["APB Peripheral Subsystem"]
+        direction TB
+
+        DEC["APB Address Decoder<br/>PADDR[15:8]"]
+
+        GPIO["GPIO<br/>0x0000 – 0x00FF"]
+        TIMER["Timer<br/>0x0100 – 0x01FF"]
+        UART["UART<br/>0x0200 – 0x02FF"]
+
+        MUX["APB Response Multiplexer"]
+
+        DEC -->|"gpio_psel"| GPIO
+        DEC -->|"timer_psel"| TIMER
+        DEC -->|"uart_psel"| UART
+
+        GPIO --> MUX
+        TIMER --> MUX
+        UART --> MUX
+    end
+
+    MASTER -->|"APB Request<br/>Address · Control · Write Data"| DEC
+    MUX -->|"PRDATA · PREADY · PSLVERR"| RESP["Response to APB Master"]
+
+    style SYS fill:#f8fafc,stroke:#64748b
+    style DEC fill:#dbeafe,stroke:#2563eb
+    style MUX fill:#dbeafe,stroke:#2563eb
+    style GPIO fill:#dcfce7,stroke:#16a34a
+    style TIMER fill:#fef3c7,stroke:#d97706
+    style UART fill:#f3e8ff,stroke:#9333ea
 ```
+
+| Block | External Interface | Interrupt |
+|---|---|---|
+| GPIO | `gpio_in[7:0]`, `gpio_out[7:0]`, `gpio_oe[7:0]` | `gpio_irq` |
+| Timer | — | `timer_irq` |
+| UART | `uart_rx`, `uart_tx` | `uart_irq` |
+
+All peripherals share `PCLK` and `PRESETn`. For clarity, the diagram groups
+APB request signals into one connection. `PENABLE`, `PWRITE`, `PWDATA`, and
+`PADDR[7:0]` connect directly to each peripheral; the decoder generates
+individual select signals from `PSEL` and `PADDR[15:8]`.
 
 ## APB routing
 
