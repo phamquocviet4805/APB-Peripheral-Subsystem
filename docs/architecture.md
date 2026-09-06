@@ -9,6 +9,15 @@ an APB response multiplexer. All sequential logic uses the rising edge of
 ```mermaid
 ---
 config:
+  theme: base
+  themeVariables:
+    primaryColor: "#ffffff"
+    primaryTextColor: "#000000"
+    primaryBorderColor: "#000000"
+    lineColor: "#000000"
+    edgeLabelBackground: "#ffffff"
+    clusterBkg: "#ffffff"
+    clusterBorder: "#000000"
   flowchart:
     curve: stepAfter
     nodeSpacing: 35
@@ -40,12 +49,10 @@ flowchart TB
     MASTER -->|"APB Request<br/>Address · Control · Write Data"| DEC
     MUX -->|"PRDATA · PREADY · PSLVERR"| RESP["Response to APB Master"]
 
-    style SYS fill:#f8fafc,stroke:#64748b
-    style DEC fill:#dbeafe,stroke:#2563eb
-    style MUX fill:#dbeafe,stroke:#2563eb
-    style GPIO fill:#dcfce7,stroke:#16a34a
-    style TIMER fill:#fef3c7,stroke:#d97706
-    style UART fill:#f3e8ff,stroke:#9333ea
+    classDef monochrome fill:#ffffff,stroke:#000000,color:#000000
+    class MASTER,DEC,GPIO,TIMER,UART,MUX,RESP monochrome
+    style SYS fill:#ffffff,stroke:#000000,color:#000000
+    linkStyle default stroke:#000000,color:#000000
 ```
 
 | Block | External Interface | Interrupt |
