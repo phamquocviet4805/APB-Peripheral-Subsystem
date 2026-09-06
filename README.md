@@ -17,12 +17,6 @@ and Timer peripherals, plus an 8N1 UART.
 - Unmapped page detection with PSLVERR
 - Self-checking testbench
 - Directed and randomized verification
-- APB protocol checker
-- Register access coverage for six registers
-- Verilator lint
-- Yosys synthesis
-- Nangate45 standard-cell mapping
-- OpenSTA setup/hold analysis
 
 ## Architecture
 
