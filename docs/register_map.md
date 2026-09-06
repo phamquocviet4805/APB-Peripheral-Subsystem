@@ -1,7 +1,7 @@
 # APB Peripheral Subsystem Register Map
 
 This document describes the current RTL in `rtl/apb_gpio.sv`,
-`rtl/apb_timer.sv`, and `rtl/apb_subsystem.sv`.
+`rtl/apb_timer.sv`, `rtl/apb_uart.sv`, and `rtl/apb_subsystem.sv`.
 
 ## Address decoding and access rules
 
@@ -9,6 +9,7 @@ This document describes the current RTL in `rtl/apb_gpio.sv`,
 |---|---|---|
 | 0x0000_0000–0x0000_00FF | GPIO | 0x00 |
 | 0x0000_0100–0x0000_01FF | Timer | 0x01 |
+| 0x0000_0200–0x0000_02FF | UART | 0x02 |
 
 The subsystem uses `PADDR[15:8]` to select a peripheral and forwards
 `PADDR[7:0]` as its register offset. `PADDR[31:16]` is ignored: for example,
@@ -16,7 +17,7 @@ The subsystem uses `PADDR[15:8]` to select a peripheral and forwards
 
 - Data transfers are 32 bits; there is no byte-strobe interface.
 - Writes take effect on a rising PCLK edge when `PSEL && PENABLE && PWRITE && PREADY`.
-- Both peripherals always return `PREADY = 1` and `PSLVERR = 0`.
+- All peripherals always return `PREADY = 1` and `PSLVERR = 0`.
 - Unmapped pages return zero read data and assert `PSLVERR` during ACCESS
   (`PSEL && PENABLE`), for both reads and writes.
 - Unimplemented offsets within a mapped page return zero and ignore register
@@ -25,8 +26,9 @@ The subsystem uses `PADDR[15:8]` to select a peripheral and forwards
 - Writes to RO registers do not modify those registers. Reads of WO registers
   return zero. A timer-page write still pauses timer advancement for that edge.
 - Unimplemented register bits read as zero and are ignored on writes.
-- All stored registers, synchronization stages, and interrupt outputs reset
-  to zero when active-low asynchronous `PRESETn` is asserted.
+- Active-low asynchronous `PRESETn` clears GPIO/timer registers and interrupt
+  outputs. UART BAUD resets to 868, TX idles high, and the RX synchronizer
+  resets high; other UART stored registers reset to zero.
 
 ## GPIO registers
 
@@ -112,3 +114,26 @@ expiry. Reads and GPIO-page writes do not pause the timer.
 
 A typical start sequence is: disable CTRL, clear INTCLR with 1, program
 PRESCALE, program LOAD, then write CTRL with 1 (one-shot) or 3 (periodic).
+
+
+## UART registers
+
+UART uses 8N1 frames, LSB first. All registers reset to zero except BAUD (868).
+
+| Address | Offset | Register | Access | Meaning |
+|---|---|---|---|---|
+| 0x0000_0200 | 0x00 | UART_TXDATA | WO | [7:0] byte; ignored when disabled or busy; reads zero |
+| 0x0000_0204 | 0x04 | UART_RXDATA | RO | [7:0] received byte; completed read clears RX valid |
+| 0x0000_0208 | 0x08 | UART_STATUS | RO | [0] TX busy, [1] RX valid, [2] overrun, [3] frame error |
+| 0x0000_020C | 0x0C | UART_CTRL | RW | [0] TX enable, [1] RX enable, [2] RX IRQ enable, [3] TX IRQ enable |
+| 0x0000_0210 | 0x10 | UART_BAUD | RW | [15:0] clocks per bit; effective minimum 2 |
+| 0x0000_0214 | 0x14 | UART_INT_STATUS | RO | [0] RX valid, [1] TX done pending, [2] overrun, [3] frame error |
+| 0x0000_0218 | 0x18 | UART_INT_CLR | WO, W1C | Clear corresponding INT_STATUS bits; reads zero |
+
+Configure BAUD while idle. IRQ is asserted for RX valid/overrun/frame error
+when CTRL[2] is set, or TX done pending when CTRL[3] is set. Pending flags
+are recorded even when their IRQ masks are disabled. New TX-done and
+frame-error events take priority over simultaneous clears. RX has a single
+byte buffer: an arrival while RX valid is already set raises overrun and
+drops the new byte, including when software consumes the old byte on that
+same clock. Disabling TX aborts an active transmission.

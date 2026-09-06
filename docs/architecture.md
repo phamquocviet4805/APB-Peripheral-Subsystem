@@ -1,6 +1,6 @@
 # Architecture
 
-The subsystem contains a GPIO peripheral, a timer, an address decoder, and
+The subsystem contains a GPIO peripheral, a timer, a UART, an address decoder, and
 an APB response multiplexer. All sequential logic uses the rising edge of
 `PCLK` and active-low asynchronous reset `PRESETn`.
 
@@ -9,23 +9,24 @@ an APB response multiplexer. All sequential logic uses the rising edge of
 ```text
                          apb_subsystem
 APB master ----> address decoder (PADDR[15:8])
-                         |               |
-                         v               v
-                     apb_gpio        apb_timer
-                         |               |
-                         +-------+-------+
+                         |               |           |
+                         v               v           v
+                     apb_gpio        apb_timer    apb_uart
+                         |               |           |
+                         +-------+-------+-----------+
                                  v
                            response mux ----> PRDATA / PREADY / PSLVERR
 
 GPIO inputs ----> synchronizer / edge detector ----> gpio_irq
 GPIO registers ----------------------------------> gpio_out / gpio_oe
 Timer counter -----------------------------------> timer_irq
+UART RX/TX engines <----> uart_rx / uart_tx --------> uart_irq
 ```
 
 ## APB routing
 
 The external address and data buses are 32 bits. GPIO is selected for page
-`0x00`, timer for page `0x01`, and each peripheral receives the 8-bit offset
+`0x00`, timer for page `0x01`, UART for page `0x02`, and each peripheral receives the 8-bit offset
 `PADDR[7:0]`. The upper 16 address bits are ignored, creating aliases every
 64 KiB for these pages.
 
@@ -63,12 +64,23 @@ LOAD writes reload VALUE; LOAD and PRESCALE writes reset the prescaler
 count. Disabling CTRL also resets the prescaler count. Only reset or an
 INTCLR write with bit 0 set clears IRQ. GPIO accesses do not pause the timer.
 
+## UART datapath
+
+The UART exposes `uart_rx` and `uart_tx` and uses 8N1 frames, LSB first.
+BAUD sets clocks per bit (minimum effective divider 2, reset 868). TXDATA
+writes start transmission only when TX is enabled and idle. There is no TX
+queue. RX stores one unread byte; another received byte sets overrun and
+preserves the first byte. An invalid stop bit sets frame-error status.
+Subsystem verification uses TX-to-RX loopback and checks interrupt isolation
+while GPIO and timer interrupts are also pending.
+
 ## Interrupt integration
 
-`gpio_irq` and `timer_irq` are separate active-high outputs. The subsystem
+`gpio_irq`, `timer_irq`, and `uart_irq` are separate active-high outputs. The subsystem
 does not combine them or implement a shared interrupt controller. GPIO has
 per-pin masks; timer has no interrupt mask. Software acknowledges each
-source through its own clear register.
+source through its own clear register. UART has separate RX and TX IRQ masks;
+reading RXDATA also clears RX-valid status.
 
 ## Verification and timing scope
 

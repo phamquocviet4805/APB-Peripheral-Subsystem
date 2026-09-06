@@ -1,7 +1,7 @@
 # APB Peripheral Subsystem
 
 A synthesizable SystemVerilog APB peripheral subsystem containing GPIO
-and Timer peripherals.
+and Timer peripherals, plus an 8N1 UART.
 
 ## Features
 
@@ -10,7 +10,8 @@ and Timer peripherals.
 - Per-pin GPIO edge interrupts with masking and write-one-to-clear status
 - Two-stage GPIO input synchronization
 - 32-bit one-shot/periodic timer with a 16-bit prescaler
-- Independent GPIO and timer interrupt outputs
+- UART TX/RX with programmable baud divider and RX error reporting
+- Independent GPIO, timer and UART interrupt outputs
 - Address decoding
 - Read-data and response multiplexing
 - Unmapped page detection with PSLVERR
@@ -34,6 +35,7 @@ timer operation, and interrupt integration.
 |---|---|
 | 0x0000_0000 - 0x0000_00FF | GPIO |
 | 0x0000_0100 - 0x0000_01FF | Timer |
+| 0x0000_0200 - 0x0000_02FF | UART |
 
 The decoder uses `PADDR[15:8]`; upper address bits `[31:16]` are ignored.
 Unmapped pages return `PSLVERR` during ACCESS. Unimplemented offsets within
@@ -46,6 +48,7 @@ See [Register map](docs/register_map.md) for all registers and side effects.
 ```sh
 make sim_gpio
 make sim_timer
+make sim_uart
 make sim_subsystem
 make regression
 ```
