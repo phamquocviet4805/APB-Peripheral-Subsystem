@@ -1,69 +1,73 @@
 # APB Peripheral Subsystem
 
-A synthesizable SystemVerilog APB peripheral subsystem containing GPIO
-and Timer peripherals, plus an 8N1 UART.
+A synthesizable SystemVerilog subsystem with GPIO, a timer, and an 8N1 UART
+on a shared APB interface.
 
-## Features
+[Architecture and block diagram](docs/architecture.md) · [Register reference](docs/register_map.md)
 
-- AMBA APB slave interface
-- 8-bit GPIO peripheral
-- Per-pin GPIO edge interrupts with masking and write-one-to-clear status
-- Two-stage GPIO input synchronization
-- 32-bit one-shot/periodic timer with a 16-bit prescaler
-- UART TX/RX with programmable baud divider and RX error reporting
-- Independent GPIO, timer and UART interrupt outputs
-- Address decoding
-- Read-data and response multiplexing
-- Unmapped page detection with PSLVERR
-- Self-checking testbench
-- Directed and randomized verification
+## Overview
 
-## Architecture
+| Peripheral | Main capabilities | Address range |
+|---|---|---|
+| GPIO | 8 pins, synchronized inputs, configurable edge interrupts | `0x0000–0x00FF` |
+| Timer | 32-bit counter, 16-bit prescaler, one-shot and periodic modes | `0x0100–0x01FF` |
+| UART | TX/RX, programmable baud divider, overrun and frame-error status | `0x0200–0x02FF` |
 
-See [Architecture](docs/architecture.md) for APB routing, GPIO synchronization,
-timer operation, and interrupt integration.
+The APB interface uses 32-bit addresses and data with zero wait states.
+Each peripheral has an independent interrupt output. The decoder uses
+`PADDR[15:8]`; bits `[31:16]` are ignored. Unmapped pages return `PSLVERR`
+during ACCESS.
 
-## Address Map
+## Quick start
 
-| Range | Peripheral |
-|---|---|
-| 0x0000_0000 - 0x0000_00FF | GPIO |
-| 0x0000_0100 - 0x0000_01FF | Timer |
-| 0x0000_0200 - 0x0000_02FF | UART |
-
-The decoder uses `PADDR[15:8]`; upper address bits `[31:16]` are ignored.
-Unmapped pages return `PSLVERR` during ACCESS. Unimplemented offsets within
-valid pages return zero without an error.
-
-See [Register map](docs/register_map.md) for all registers and side effects.
-
-## Run checks
+With GNU Make and Icarus Verilog installed, run the subsystem test:
 
 ```sh
-make sim_gpio
-make sim_timer
-make sim_uart
 make sim_subsystem
-make regression
 ```
 
-`regression` runs simulations, lint, synthesis, standard-cell mapping, and
-STA. Waveforms are written to `waves/`, netlists to `build/`, and the timing
-report to `reports/sta.log`.
+The test checks peripheral routing, UART loopback, independent interrupts,
+invalid addresses, and randomized GPIO/timer accesses. View the waveform
+with GTKWave:
 
-STA currently reports violations without failing the Make target. Inspect
-both SETUP CHECK and HOLD CHECK; a successful command exit or zero default
-WNS/TNS does not establish that hold timing passes. This flow analyzes a
-mapped netlist before physical implementation, not a routed design.
+```sh
+gtkwave waves/apb_subsystem.vcd
+```
 
-## Tools
+## Build and verification
 
-- Icarus Verilog
-- GTKWave
-- Verilator
-- Yosys
-- Nangate45 Open Cell Library
-- OpenSTA
-- GNU Make
-- Git
+| Command | Purpose | Required tools |
+|---|---|---|
+| `make sim_gpio` | GPIO simulation | Icarus Verilog |
+| `make sim_timer` | Timer simulation | Icarus Verilog |
+| `make sim_uart` | UART simulation | Icarus Verilog |
+| `make sim_subsystem` | Subsystem simulation with APB protocol checks | Icarus Verilog |
+| `make lint` | RTL lint | Verilator |
+| `make synth` | Synthesize the subsystem | Yosys |
+| `make stdcell_map` | Map to Nangate45 standard cells | Yosys, Nangate45 library |
+| `make sta` | Map and report setup/hold timing | Mapping tools, OpenSTA |
+| `make regression` | Run all simulations and the implementation flow | All tools above |
 
+All commands use GNU Make. GTKWave is optional for waveform inspection.
+
+| Output directory | Contents |
+|---|---|
+| `waves/` | Simulation waveforms (`.vcd`) |
+| `build/` | Simulation executables and generated netlists |
+| `reports/` | Timing report (`sta.log`) |
+
+**Timing scope:** STA analyzes a mapped netlist before physical implementation.
+The target does not fail on negative slack. Inspect both setup and hold
+reports; a successful command exit does not establish timing closure.
+
+## Repository guide
+
+| Path | Contents |
+|---|---|
+| `rtl/` | Peripheral RTL and subsystem integration |
+| `tb/` | Testbenches and APB protocol checker |
+| `sim/` | Simulation filelists |
+| `constraints/` | Subsystem timing constraints |
+| `scripts/` | STA script |
+| [docs/architecture.md](docs/architecture.md) | Block diagram, interfaces, and operating behavior |
+| [docs/register_map.md](docs/register_map.md) | Register offsets, bit fields, and software side effects |

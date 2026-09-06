@@ -1,7 +1,17 @@
-# APB Peripheral Subsystem Register Map
+# Register reference
 
-This document describes the current RTL in `rtl/apb_gpio.sv`,
-`rtl/apb_timer.sv`, `rtl/apb_uart.sv`, and `rtl/apb_subsystem.sv`.
+[README](../README.md) · [Architecture](architecture.md)
+
+[Address decoding](#address-decoding-and-access-rules) · [GPIO](#gpio-registers) · [Timer](#timer-registers) · [UART](#uart-registers)
+
+Register addresses are **peripheral base + offset**. Transfers are 32 bits.
+
+| Access | Meaning |
+|---|---|
+| RW | Read/write |
+| RO | Read-only; writes do not modify the register |
+| WO | Write-only; reads return zero |
+| W1C | Write 1 to clear a bit; write 0 to preserve it |
 
 ## Address decoding and access rules
 
@@ -32,15 +42,19 @@ The subsystem uses `PADDR[15:8]` to select a peripheral and forwards
 
 ## GPIO registers
 
-| Address | Offset | Register | Access | Implemented bits | Description |
-|---|---|---|---|---|---|
-| 0x0000_0000 | 0x00 | GPIO_DATA | RW | [7:0] | Output data; directly drives gpio_out |
-| 0x0000_0004 | 0x04 | GPIO_DIR | RW | [7:0] | Output enable; directly drives gpio_oe |
-| 0x0000_0008 | 0x08 | GPIO_INPUT | RO | [7:0] | Input after two synchronization stages |
-| 0x0000_000C | 0x0C | GPIO_INT_EN | RW | [7:0] | Per-pin IRQ mask: 1 enables contribution to gpio_irq |
-| 0x0000_0010 | 0x10 | GPIO_INT_TYPE | RW | [7:0] | Per-pin edge: 1 rising, 0 falling |
-| 0x0000_0014 | 0x14 | GPIO_INT_STATUS | RO | [7:0] | Sticky pending edge events |
-| 0x0000_0018 | 0x18 | GPIO_INT_CLR | WO, W1C | [7:0] | Write 1 to clear the corresponding pending bit |
+**Base:** `0x0000_0000` · **Reset:** all registers zero
+
+| Offset | Register | Access | Implemented bits | Description |
+|---|---|---|---|---|
+| 0x00 | GPIO_DATA | RW | [7:0] | Output data; directly drives gpio_out |
+| 0x04 | GPIO_DIR | RW | [7:0] | Output enable; directly drives gpio_oe |
+| 0x08 | GPIO_INPUT | RO | [7:0] | Input after two synchronization stages |
+| 0x0C | GPIO_INT_EN | RW | [7:0] | Per-pin IRQ mask: 1 enables contribution to gpio_irq |
+| 0x10 | GPIO_INT_TYPE | RW | [7:0] | Per-pin edge: 1 rising, 0 falling |
+| 0x14 | GPIO_INT_STATUS | RO | [7:0] | Sticky pending edge events |
+| 0x18 | GPIO_INT_CLR | WO, W1C | [7:0] | Write 1 to clear the corresponding pending bit |
+
+### Input and output behavior
 
 `GPIO_DIR` does not gate `gpio_out`, input sampling, or edge detection inside
 this block. External pad logic must use `gpio_oe` to control output driving.
@@ -49,6 +63,8 @@ Input passes through `gpio_sync1` and `gpio_sync2`. A further register,
 `gpio_sync2_d`, stores the previous synchronized sample for edge detection.
 In RTL simulation, an input stable before a sampling edge reaches `gpio_sync2`
 after two rising edges and can set interrupt status on the third.
+
+### Interrupt behavior
 
 Events are latched regardless of `GPIO_INT_EN`:
 
@@ -68,14 +84,16 @@ next_status = (status & ~clear_mask) | interrupt_event
 
 ## Timer registers
 
-| Address | Offset | Register | Access | Implemented bits | Description |
-|---|---|---|---|---|---|
-| 0x0000_0100 | 0x00 | TIMER_CTRL | RW | [1:0] | Bit 0 enable; bit 1 periodic mode |
-| 0x0000_0104 | 0x04 | TIMER_LOAD | RW | [31:0] | Reload value; writing also replaces the current counter |
-| 0x0000_0108 | 0x08 | TIMER_VALUE | RO | [31:0] | Current down-counter value |
-| 0x0000_010C | 0x0C | TIMER_STATUS | RO | [0] | Sticky IRQ state |
-| 0x0000_0110 | 0x10 | TIMER_PRESCALE | RW | [15:0] | Timer tick divider minus one |
-| 0x0000_0114 | 0x14 | TIMER_INTCLR | WO, W1C | [0] | Write 1 to clear timer IRQ |
+**Base:** `0x0000_0100` · **Reset:** all registers zero
+
+| Offset | Register | Access | Implemented bits | Description |
+|---|---|---|---|---|
+| 0x00 | TIMER_CTRL | RW | [1:0] | Bit 0 enable; bit 1 periodic mode |
+| 0x04 | TIMER_LOAD | RW | [31:0] | Reload value; writing also replaces the current counter |
+| 0x08 | TIMER_VALUE | RO | [31:0] | Current down-counter value |
+| 0x0C | TIMER_STATUS | RO | [0] | Sticky IRQ state |
+| 0x10 | TIMER_PRESCALE | RW | [15:0] | Timer tick divider minus one |
+| 0x14 | TIMER_INTCLR | WO, W1C | [0] | Write 1 to clear timer IRQ |
 
 ### Control and expiry
 
@@ -110,30 +128,58 @@ This counts running clock edges after the enabling write. Every completed
 write to the timer page takes priority over timer advancement, including
 writes to RO or unimplemented offsets and INTCLR writes that write zero.
 Such an edge does not advance the prescaler, decrement VALUE, or process
-expiry. Reads and GPIO-page writes do not pause the timer.
+expiry. Reads and writes to GPIO or UART pages do not pause the timer.
 
-A typical start sequence is: disable CTRL, clear INTCLR with 1, program
-PRESCALE, program LOAD, then write CTRL with 1 (one-shot) or 3 (periodic).
+### Starting the timer
+
+1. Write `CTRL = 0` to disable counting.
+2. Write `INTCLR = 1` to clear any pending interrupt.
+3. Program `PRESCALE`.
+4. Program `LOAD` to set the initial count.
+5. Write `CTRL = 1` for one-shot mode or `CTRL = 3` for periodic mode.
 
 
 ## UART registers
 
-UART uses 8N1 frames, LSB first. All registers reset to zero except BAUD (868).
+**Base:** `0x0000_0200` · **Reset:** all registers zero except BAUD (`868`)
 
-| Address | Offset | Register | Access | Meaning |
-|---|---|---|---|---|
-| 0x0000_0200 | 0x00 | UART_TXDATA | WO | [7:0] byte; ignored when disabled or busy; reads zero |
-| 0x0000_0204 | 0x04 | UART_RXDATA | RO | [7:0] received byte; completed read clears RX valid |
-| 0x0000_0208 | 0x08 | UART_STATUS | RO | [0] TX busy, [1] RX valid, [2] overrun, [3] frame error |
-| 0x0000_020C | 0x0C | UART_CTRL | RW | [0] TX enable, [1] RX enable, [2] RX IRQ enable, [3] TX IRQ enable |
-| 0x0000_0210 | 0x10 | UART_BAUD | RW | [15:0] clocks per bit; effective minimum 2 |
-| 0x0000_0214 | 0x14 | UART_INT_STATUS | RO | [0] RX valid, [1] TX done pending, [2] overrun, [3] frame error |
-| 0x0000_0218 | 0x18 | UART_INT_CLR | WO, W1C | Clear corresponding INT_STATUS bits; reads zero |
+UART uses 8N1 frames, LSB first.
 
-Configure BAUD while idle. IRQ is asserted for RX valid/overrun/frame error
-when CTRL[2] is set, or TX done pending when CTRL[3] is set. Pending flags
-are recorded even when their IRQ masks are disabled. New TX-done and
-frame-error events take priority over simultaneous clears. RX has a single
-byte buffer: an arrival while RX valid is already set raises overrun and
-drops the new byte, including when software consumes the old byte on that
-same clock. Disabling TX aborts an active transmission.
+| Offset | Register | Access | Meaning |
+|---|---|---|---|
+| 0x00 | UART_TXDATA | WO | [7:0] byte; ignored when disabled or busy; reads zero |
+| 0x04 | UART_RXDATA | RO | [7:0] received byte; completed read clears RX valid |
+| 0x08 | UART_STATUS | RO | Current TX state and sticky RX flags |
+| 0x0C | UART_CTRL | RW | TX/RX enables and interrupt masks |
+| 0x10 | UART_BAUD | RW | [15:0] clocks per bit; effective minimum 2 |
+| 0x14 | UART_INT_STATUS | RO | Pending interrupt flags |
+| 0x18 | UART_INT_CLR | WO, W1C | Clear corresponding INT_STATUS bits; reads zero |
+
+### Control and status bits
+
+| Bit | UART_CTRL | UART_STATUS | UART_INT_STATUS / UART_INT_CLR |
+|---|---|---|---|
+| 0 | TX enable | TX busy | RX valid |
+| 1 | RX enable | RX valid | TX done pending |
+| 2 | RX IRQ enable | RX overrun | RX overrun |
+| 3 | TX IRQ enable | RX frame error | RX frame error |
+
+### Transmit and receive
+
+- Configure `BAUD` while idle. The effective divider is at least 2 clocks per bit.
+- Write `TXDATA` only when TX is enabled and not busy. There is no TX queue.
+- Read `RXDATA` to consume the buffered byte and clear RX valid.
+- If another byte arrives before the buffer is consumed, the old byte is
+  preserved, the new byte is dropped, and overrun is set. This also applies
+  when the old byte is consumed on the same clock as the new arrival.
+- Disabling TX aborts an active transmission.
+
+### Interrupt behavior
+
+RX valid, overrun, or frame error asserts `uart_irq` when `CTRL[2]` is set.
+TX done pending asserts it when `CTRL[3]` is set. Pending flags are recorded
+even when their interrupt masks are disabled.
+
+Write a mask to `INT_CLR` to clear the corresponding pending flags. New
+TX-done and frame-error events take priority over simultaneous clears.
+Reading `RXDATA` clears RX valid but does not clear overrun or frame error.

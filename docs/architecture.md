@@ -1,5 +1,9 @@
 # Architecture
 
+[README](../README.md) · [Register reference](register_map.md)
+
+[Block diagram](#block-diagram) · [APB routing](#apb-routing) · [Interrupts](#interrupt-integration)
+
 The subsystem contains a GPIO peripheral, a timer, a UART, an address decoder, and
 an APB response multiplexer. All sequential logic uses the rising edge of
 `PCLK` and active-low asynchronous reset `PRESETn`.
@@ -69,8 +73,8 @@ individual select signals from `PSEL` and `PADDR[15:8]`.
 ## APB routing
 
 The external address and data buses are 32 bits. GPIO is selected for page
-`0x00`, timer for page `0x01`, UART for page `0x02`, and each peripheral receives the 8-bit offset
-`PADDR[7:0]`. The upper 16 address bits are ignored, creating aliases every
+`0x00`, timer for page `0x01`, and UART for page `0x02`. Each peripheral
+receives the 8-bit offset `PADDR[7:0]`. The upper 16 address bits are ignored, creating aliases every
 64 KiB for these pages.
 
 Writes commit in ACCESS at a rising clock edge. Read data is combinational
@@ -105,7 +109,7 @@ continues counting. The tick interval is PRESCALE + 1 running cycles.
 A timer-page write takes priority over all counting logic for that edge.
 LOAD writes reload VALUE; LOAD and PRESCALE writes reset the prescaler
 count. Disabling CTRL also resets the prescaler count. Only reset or an
-INTCLR write with bit 0 set clears IRQ. GPIO accesses do not pause the timer.
+INTCLR write with bit 0 set clears IRQ. GPIO and UART accesses do not pause the timer.
 
 ## UART datapath
 
@@ -119,11 +123,17 @@ while GPIO and timer interrupts are also pending.
 
 ## Interrupt integration
 
-`gpio_irq`, `timer_irq`, and `uart_irq` are separate active-high outputs. The subsystem
-does not combine them or implement a shared interrupt controller. GPIO has
-per-pin masks; timer has no interrupt mask. Software acknowledges each
-source through its own clear register. UART has separate RX and TX IRQ masks;
-reading RXDATA also clears RX-valid status.
+The subsystem exposes three independent active-high interrupt outputs. It does
+not combine them or implement an interrupt controller.
+
+| Output | Trigger | Mask | Acknowledge |
+|---|---|---|---|
+| `gpio_irq` | Selected GPIO edge | Per-pin `GPIO_INT_EN` | `GPIO_INT_CLR` |
+| `timer_irq` | Timer expiry | None | `TIMER_INTCLR` |
+| `uart_irq` | RX valid/error or TX completion | RX and TX bits in `UART_CTRL` | `UART_INT_CLR`; reading `RXDATA` also clears RX valid |
+
+Pending flags remain set until acknowledged or reset. See the
+[register reference](register_map.md) for clear priorities and side effects.
 
 ## Verification and timing scope
 
