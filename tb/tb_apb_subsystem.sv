@@ -18,6 +18,11 @@ module tb_apb_subsystem;
     logic [7:0]  gpio_out;
     logic [7:0]  gpio_oe;
 
+    // UART loopback exercises the subsystem RX/TX ports.
+    wire uart_tx;
+    wire uart_rx = uart_tx;
+    wire uart_irq;
+
     // Interrupts
     logic        gpio_irq;
     logic        timer_irq;
@@ -76,7 +81,10 @@ module tb_apb_subsystem;
         .gpio_oe   (gpio_oe),
 
         .gpio_irq  (gpio_irq),
-        .timer_irq (timer_irq)
+        .timer_irq (timer_irq),
+        .uart_rx   (uart_rx),
+        .uart_tx   (uart_tx),
+        .uart_irq  (uart_irq)
     );
 
     // APB protocol checker
@@ -529,7 +537,7 @@ module tb_apb_subsystem;
             end
 
             default: begin
-                if (addr[15:8] != 8'h00 && addr[15:8] != 8'h01)
+                if (addr[15:8] != 8'h00 && addr[15:8] != 8'h01 && addr[15:8] != 8'h02)
                     cov_invalid_addr++;
             end
 
@@ -668,7 +676,7 @@ module tb_apb_subsystem;
     task directed_test;
         begin
             if (gpio_out !== 8'd0 || gpio_oe !== 8'd0 ||
-                gpio_irq !== 1'b0 || timer_irq !== 1'b0)
+                gpio_irq !== 1'b0 || timer_irq !== 1'b0 || uart_irq !== 1'b0 || uart_tx !== 1'b1)
                 $fatal(1, "Subsystem reset failed");
             check_reg(32'h0000, 32'd0);
             check_reg(32'h0100, 32'd0);
@@ -716,8 +724,51 @@ module tb_apb_subsystem;
             check_reg(32'h0014, 32'd0);
             $display("[PASS] Timer expiration and independent IRQ routing/clear");
 
-            apb_read_error(32'h0200);
-            apb_write_error(32'h0204);
+            // UART page routing, full frame loopback and independent IRQs.
+            check_reg(32'h020C, 0);
+            check_reg(32'h0210, 868);
+            check_reg(32'h0214, 0);
+            apb_write(32'h0210, 16);
+            apb_write(32'h020C, 15);
+            check_reg(32'h020C, 15);
+            check_reg(32'hABCD_0210, 16);
+            check_reg(32'h0010, 1); // UART BAUD must not overwrite GPIO type.
+            check_reg(32'h0110, 3); // Nor TIMER_PRESCALE.
+
+            // Keep GPIO and timer IRQs pending during UART activity.
+            @(negedge PCLK);
+            gpio_in = 0;
+            repeat (4) @(negedge PCLK);
+            gpio_in = 1;
+            apb_write(32'h0104, 8);
+            apb_write(32'h0100, 1);
+            apb_write(32'h0200, 8'hA6);
+            repeat (180) @(negedge PCLK);
+            check_reg(32'h0214, 3); // RX valid and TX done.
+            if (uart_irq !== 1 || gpio_irq !== 1 || timer_irq !== 1)
+                $fatal(1, "Three independent IRQs must be asserted");
+            apb_write(32'h0218, 2);
+            check_reg(32'h0214, 1);
+            if (uart_irq !== 1)
+                $fatal(1, "RX pending must keep UART IRQ asserted");
+            check_reg(32'h0204, 8'hA6);
+            check_reg(32'h0214, 0);
+            if (uart_irq !== 0 || gpio_irq !== 1 || timer_irq !== 1)
+                $fatal(1, "UART IRQ clear isolation failed");
+            apb_write(32'h0018, 1);
+            apb_write(32'h0114, 1);
+            if (gpio_irq !== 0 || timer_irq !== 0)
+                $fatal(1, "GPIO/timer clear after UART activity failed");
+            check_reg(32'h0000, 32'h5A);
+            check_reg(32'h0004, 32'h0F);
+            check_reg(32'h0104, 8);
+            apb_write(32'h02FC, 32'hFFFFFFFF);
+            check_reg(32'h02FC, 0);
+            check_reg(32'h020C, 15);
+            $display("[PASS] UART loopback, page isolation and independent IRQ clear");
+
+            apb_read_error(32'h0300);
+            apb_write_error(32'h0304);
             apb_read_error(32'hFFFF_FF00);
             apb_write_error(32'hFFFF_FF00);
             check_reg(32'h0000, 32'h5A);
