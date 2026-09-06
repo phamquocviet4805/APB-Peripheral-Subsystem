@@ -18,9 +18,14 @@ module apb_subsystem (
     output logic [7:0]  gpio_out,
     output logic [7:0]  gpio_oe,
 
+    // UART interface
+    input  logic        uart_rx,
+    output logic        uart_tx,
+
     // Interrupt outputs
     output logic        gpio_irq,
-    output logic        timer_irq
+    output logic        timer_irq,
+    output logic        uart_irq
 );
 
     // ============================================================
@@ -33,6 +38,8 @@ module apb_subsystem (
     //   0x0000_0100 - 0x0000_01FF
     // ============================================================
 
+    // UART: 0x0000_0200 - 0x0000_02FF
+    localparam [7:0] UART_PAGE  = 8'h02;
     localparam [7:0] GPIO_PAGE  = 8'h00;
     localparam [7:0] TIMER_PAGE = 8'h01;
 
@@ -43,6 +50,9 @@ module apb_subsystem (
 
     logic gpio_psel;
     logic timer_psel;
+    logic uart_psel;
+
+    assign uart_psel = PSEL && (PADDR[15:8] == UART_PAGE);
 
     assign gpio_psel =
         PSEL && (PADDR[15:8] == GPIO_PAGE);
@@ -117,6 +127,27 @@ module apb_subsystem (
     );
 
 
+    logic [31:0] uart_prdata;
+    logic        uart_pready;
+    logic        uart_pslverr;
+
+    apb_uart u_apb_uart (
+        .PCLK      (PCLK),
+        .PRESETn   (PRESETn),
+        .PSEL      (uart_psel),
+        .PENABLE   (PENABLE),
+        .PWRITE    (PWRITE),
+        .PADDR     (PADDR[7:0]),
+        .PWDATA    (PWDATA),
+        .PRDATA    (uart_prdata),
+        .PREADY    (uart_pready),
+        .PSLVERR   (uart_pslverr),
+        .uart_rx   (uart_rx),
+        .uart_tx   (uart_tx),
+        .uart_irq  (uart_irq)
+    );
+
+
     // ============================================================
     // APB response mux
     // ============================================================
@@ -141,6 +172,12 @@ module apb_subsystem (
             PREADY  = timer_pready;
             PSLVERR = timer_pslverr;
 
+        end
+
+        else if (uart_psel) begin
+            PRDATA  = uart_prdata;
+            PREADY  = uart_pready;
+            PSLVERR = uart_pslverr;
         end
 
         // Invalid APB address
